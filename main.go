@@ -75,3 +75,5 @@ func main() {
 		}
 	}
 }
+
+// vim: tabstop=4
