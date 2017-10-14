@@ -1,7 +1,7 @@
 //
 // timecat
 //
-// (c) 2016 Chris J Arges <christopherarges@gmail.com>
+// (c) 2016-2017 Chris J Arges <christopherarges@gmail.com>
 //
 
 package main
@@ -27,9 +27,10 @@ func cleanup() {
 }
 
 func main() {
-	// Get current time ASAP
-	start := time.Now()
+	// Get command line arguments
+	args := os.Args[1:]
 
+	// Setup tty
 	setup()
 
 	// On ctrl-c exit gracefully
@@ -41,13 +42,36 @@ func main() {
 		os.Exit(0)
 	}()
 
+	// Get current time.
+	start := time.Now()
+
 	// Roughly update at 30fps
-	c := time.Tick(32 * time.Millisecond)
-	for _ = range c {
+	go func() {
+		c := time.Tick(32 * time.Millisecond)
+		for _ = range c {
+			s := fmt.Sprintf("%v", time.Since(start))
+			fmt.Printf(s)
+			for i := 0; i < len(s); i++ {
+				fmt.Printf("\b")
+			}
+		}
+	}()
+
+	// Execute command if supplied, otherwise loop.
+	if len(args) > 1 {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Run()
+
+		// Show final time
 		s := fmt.Sprintf("%v", time.Since(start))
 		fmt.Printf(s)
-		for i := 0; i < len(s); i++ {
-			fmt.Printf("\b")
+
+		// Manually clean up
+		cleanup()
+	} else {
+		for {
 		}
 	}
 }
