@@ -7,12 +7,16 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/urfave/cli"
 )
 
 func setup() {
@@ -21,14 +25,15 @@ func setup() {
 	exec.Command("stty", "-F", "/dev/tty", "-echo").Run()
 }
 
-func cleanup() {
-	fmt.Println()
+func cleanup(timestamp bool) {
+	if !timestamp {
+		// Add a newline.
+		fmt.Println()
+	}
 	exec.Command("stty", "-F", "/dev/tty", "echo").Run()
 }
 
-func main() {
-	// Get command line arguments
-	args := os.Args[1:]
+func timecat(args []string, timestamp bool) {
 
 	// Setup tty
 	setup()
@@ -38,7 +43,7 @@ func main() {
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-ch
-		cleanup()
+		cleanup(timestamp)
 		os.Exit(0)
 	}()
 
@@ -46,34 +51,72 @@ func main() {
 	start := time.Now()
 
 	// Roughly update at 30fps
-	go func() {
-		c := time.Tick(32 * time.Millisecond)
-		for _ = range c {
-			s := fmt.Sprintf("%v", time.Since(start))
-			fmt.Printf(s)
-			for i := 0; i < len(s); i++ {
-				fmt.Printf("\b")
+	if !timestamp {
+		go func() {
+			c := time.Tick(32 * time.Millisecond)
+			for _ = range c {
+				s := fmt.Sprintf("%v", time.Since(start))
+				fmt.Printf(s)
+				for i := 0; i < len(s); i++ {
+					fmt.Printf("\b")
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	// Execute command if supplied, otherwise loop.
 	if len(args) > 1 {
 		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Stdout = os.Stdout
+		stdout, _ := cmd.StdoutPipe()
 		cmd.Stderr = os.Stderr
-		cmd.Run()
+		cmd.Start()
+
+		// Buffer and print output including timestamps if requested
+		in := bufio.NewScanner(stdout)
+		for in.Scan() {
+			if timestamp {
+				log.Printf(in.Text())
+			} else {
+				fmt.Printf(in.Text())
+			}
+		}
+		if err := in.Err(); err != nil {
+			log.Printf("error: %s", err)
+		}
 
 		// Show final time
-		s := fmt.Sprintf("%v", time.Since(start))
-		fmt.Printf(s)
+		cmd.Wait()
+		if !timestamp {
+			s := fmt.Sprintf("%v", time.Since(start))
+			fmt.Printf(s)
+		}
 
 		// Manually clean up
-		cleanup()
+		cleanup(timestamp)
 	} else {
 		for {
 		}
 	}
+}
+
+func main() {
+	app := cli.NewApp()
+	app.Name = "timecat"
+	app.Usage = "a better time utility"
+	app.Version = "0"
+
+	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name: "timestamp",
+		},
+	}
+
+	app.Action = func(c *cli.Context) error {
+		timecat(c.Args(), c.Bool("timestamp"))
+		return nil
+	}
+
+	app.Run(os.Args)
 }
 
 // vim: tabstop=4
